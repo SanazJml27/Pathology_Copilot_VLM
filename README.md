@@ -8,7 +8,7 @@ The app allows a user to upload an H&E pathology image, select an ROI, ask visua
 
 ---
 
-## Screenshot
+## Copilot overview
 
 ![Pathology Co-Pilot VLM UI](docs/screenshots/ui-screenshot.png)
 
@@ -104,11 +104,11 @@ The app runs as two local services.
 
 Main UI:
 
-    http://127.0.0.1:8000
+    http://127.0.0.1:8003
 
 PA-LLaVA service:
 
-    http://127.0.0.1:9000
+    http://127.0.0.1:9001
 
 ---
 
