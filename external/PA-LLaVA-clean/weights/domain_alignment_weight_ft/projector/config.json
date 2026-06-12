@@ -1,0 +1,19 @@
+{
+  "architectures": [
+    "QFormerProjectorModel"
+  ],
+  "auto_map": {
+    "AutoConfig": "projector.QFormerProjectorConfig",
+    "AutoModel": "projector.QFormerProjectorModel"
+  },
+  "bias": true,
+  "cross_attention_freq": 1,
+  "depth": 1,
+  "hidden_act": "gelu",
+  "llm_hidden_size": 4096,
+  "model_type": "q_former_projector",
+  "num_hidden_layers": 6,
+  "torch_dtype": "float32",
+  "transformers_version": "4.41.2",
+  "visual_hidden_size": 768
+}
