@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Runtime outputs
+logs/
+service_runs/
+*.log
+
+# PA-LLaVA / model assets
+external/
+weights/
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.tar.gz
+*.ckpt
+
+# Generated archives
+*.zip
+*.tar
+*.gz
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathology Co-Pilot MVP</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { display: flex; height: 100vh; background: #0f111a; color: #e2e8f0; overflow: hidden; }
+        
+        #leftPanel { width: 55%; height: 100%; border-right: 1px solid #2d3748; display: flex; flex-direction: column; background: #161925; }
+        #osdContainer { width: 100%; height: 50%; background: #1a202c; position: relative; border-bottom: 1px solid #2d3748; }
+        #osdViewer { width: 100%; height: 100%; }
+        
+        /* Plotly-Style Mode Controller UI Toolbar Overlay */
+        .plotly-mode-bar {
+            position: absolute; top: 12px; right: 12px; z-index: 100;
+            background: rgba(26, 29, 36, 0.9); border: 1px solid #4a5568;
+            padding: 4px; border-radius: 6px; display: flex; gap: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .mode-btn {
+            background: transparent; border: none; color: #a0aec0; padding: 6px 10px;
+            font-size: 0.85rem; font-weight: 500; border-radius: 4px; cursor: pointer;
+            display: flex; align-items: center; gap: 4px; transition: 0.2s;
+        }
+        .mode-btn:hover { color: white; background: #2d3748; }
+        .mode-btn.active { color: #00e6ff; background: #1a365d; border: 1px solid #00e6ff; }
+
+        /* Dynamic Selector Guide Layer */
+        #selectionOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 50; display: none; cursor: crosshair;
+        }
+        .roi-drag-box {
+            position: absolute; border: 2px dashed #00e6ff; background: rgba(0, 230, 255, 0.15);
+            box-shadow: 0 0 8px rgba(0,230,255,0.5); pointer-events: none;
+        }
+
+        #ehrContainer { width: 100%; height: 50%; display: flex; flex-direction: column; background: #161925; overflow-y: auto; padding: 15px; }
+        .ehr-title { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 1px; color: #a0aec0; margin-bottom: 12px; font-weight: bold; display: flex; align-items: center; justify-content: space-between; }
+        .ehr-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group.full-width { grid-column: span 2; }
+        label { font-size: 0.8rem; color: #718096; font-weight: 600; }
+        input, select, textarea { background: #222533; border: 1px solid #2d3748; border-radius: 6px; padding: 8px 12px; color: white; font-size: 0.85rem; outline: none; }
+        textarea { resize: none; height: 55px; }
+        #docStatusBadge { background: #1c3d3a; color: #00e6ff; font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; border: 1px solid #00e6ff; display: none; }
+
+        #toolbar { padding: 12px; background: #1a1d24; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid #2d3748; }
+        .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .preset-badge { background: #2b6cb0; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+        .url-input { background: #2d3748; border: 1px solid #4a5568; padding: 6px 12px; border-radius: 4px; color: white; font-size: 0.85rem; flex-grow: 1; }
+        .action-btn { background: #4a5568; color: white; padding: 6px 12px; border-radius: 4px; border: none; font-size: 0.85rem; cursor: pointer; }
+        
+        #rightPanel { width: 45%; height: 100%; display: flex; flex-direction: column; background: #12141c; }
+        #chatHistory { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .message { padding: 12px 16px; border-radius: 8px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; }
+        .user-msg { background: #2d3748; align-self: flex-end; color: #fff; }
+        .ai-msg { background: #1e2230; align-self: flex-start; border-left: 4px solid #3182ce; }
+        #inputArea { padding: 15px; background: #1a1d24; border-top: 1px solid #2d3748; display: flex; gap: 10px; }
+        #userInput { flex-grow: 1; background: #2d3748; border: none; border-radius: 6px; padding: 12px; color: white; font-size: 0.95rem; }
+        #sendBtn { padding: 12px 20px; background: #3182ce; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        .roi-preview { max-width: 180px; border: 2px solid #00e6ff; border-radius: 4px; margin-top: 8px; display: block; }
+    
+        /* ---------- Light clinical UI override ---------- */
+        body {
+            background: #f5f7fb !important;
+            color: #1f2937 !important;
+        }
+
+        #leftPanel,
+        #rightPanel,
+        #ehrContainer {
+            background: #ffffff !important;
+            color: #1f2937 !important;
+        }
+
+        #leftPanel {
+            border-right: 1px solid #d9e2ec !important;
+        }
+
+        #toolbar,
+        #inputArea {
+            background: #f8fafc !important;
+            border-color: #d9e2ec !important;
+        }
+
+        #osdContainer {
+            background: #eef2f7 !important;
+            border-bottom: 1px solid #d9e2ec !important;
+        }
+
+        #chatHistory {
+            background: #f5f7fb !important;
+        }
+
+        .message {
+            color: #1f2937 !important;
+        }
+
+        .ai-msg {
+            background: #ffffff !important;
+            border-left: 4px solid #2563eb !important;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+        }
+
+        .user-msg {
+            background: #e8f0fe !important;
+            color: #1f2937 !important;
+            border: 1px solid #c7d2fe !important;
+        }
+
+        input,
+        select,
+        textarea,
+        #userInput,
+        .url-input {
+            background: #ffffff !important;
+            color: #111827 !important;
+            border: 1px solid #cbd5e1 !important;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: #64748b !important;
+        }
+
+        label,
+        .ehr-title {
+            color: #475569 !important;
+        }
+
+        .action-btn,
+        #sendBtn,
+        .preset-badge {
+            background: #2563eb !important;
+            color: #ffffff !important;
+        }
+
+        .action-btn:hover,
+        #sendBtn:hover,
+        .preset-badge:hover {
+            background: #1d4ed8 !important;
+        }
+
+        .plotly-mode-bar {
+            background: rgba(255, 255, 255, 0.95) !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12) !important;
+        }
+
+        .mode-btn {
+            color: #334155 !important;
+        }
+
+        .mode-btn:hover {
+            color: #111827 !important;
+            background: #e2e8f0 !important;
+        }
+
+        .mode-btn.active {
+            color: #ffffff !important;
+            background: #2563eb !important;
+            border: 1px solid #2563eb !important;
+        }
+
+        #docStatusBadge {
+            background: #ecfeff !important;
+            color: #0369a1 !important;
+            border: 1px solid #7dd3fc !important;
+        }
+
+        .roi-drag-box {
+            border: 2px dashed #2563eb !important;
+            background: rgba(37, 99, 235, 0.12) !important;
+            box-shadow: 0 0 8px rgba(37, 99, 235, 0.35) !important;
+        }
+
+    
+        .roi-selection-msg {
+            background: #ffffff !important;
+            color: #1f2937 !important;
+            border: 1px solid #d9e2ec !important;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+            align-self: flex-end;
+        }
+
+        .roi-selection-msg strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #334155;
+        }
+
+        .roi-selection-msg .roi-preview {
+            max-width: 220px;
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 6px;
+            margin-top: 4px;
+            display: block;
+        }
+
+    
+        #reportBtn {
+            padding: 12px 18px;
+            background: #16a34a;
+            border: none;
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        #reportBtn:hover {
+            background: #15803d;
+        }
+
+    
+        .report-card {
+            background: #ffffff !important;
+            border: 1px solid #d9e2ec;
+            border-left: 4px solid #16a34a;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 5px rgba(15, 23, 42, 0.08);
+            color: #1f2937;
+            max-width: 95%;
+            align-self: stretch;
+        }
+
+        .report-card h2 {
+            font-size: 1.05rem;
+            margin-bottom: 10px;
+            color: #14532d;
+        }
+
+        .report-card h3 {
+            font-size: 0.95rem;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            color: #334155;
+        }
+
+        .report-card p {
+            margin: 6px 0;
+            line-height: 1.5;
+        }
+
+        .report-meta {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 0.88rem;
+            margin-bottom: 12px;
+        }
+
+        .download-report-btn {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #16a34a;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .download-report-btn:hover {
+            background: #15803d;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="leftPanel">
+        <div id="toolbar">
+            <div class="row">
+                <input type="text" id="customUrlInput" class="url-input" placeholder="Paste custom image URL here...">
+                <button class="action-btn" onclick="loadCustomUrl()">Load URL</button>
+                <input type="file" id="localFileUploader" accept="image/*" style="display: none;" onchange="loadLocalFile(event)">
+                <button class="action-btn" style="background: #2b6cb0;" onclick="document.getElementById('localFileUploader').click()">📁 Upload H&E</button>
+            </div>
+        </div>
+        
+        <div id="osdContainer">
+            <div class="plotly-mode-bar">
+                <button id="panModeBtn" class="mode-btn active" onclick="setInteractionMode('pan')">🔍 Pan & Zoom</button>
+                <button id="selectModeBtn" class="mode-btn" onclick="setInteractionMode('select')">🎯 Select Region</button>
+            </div>
+            
+            <div id="osdViewer"></div>
+            <div id="selectionOverlay"></div>
+        </div>
+
+        <div id="ehrContainer">
+            <div class="ehr-title">
+                <span>📋 EHR Context & Records</span>
+                <div id="docStatusBadge">📄 Uploaded File Attached</div>
+            </div>
+            <div class="ehr-grid">
+                <div class="form-group">
+                    <label>Patient Age</label>
+                    <input type="number" id="ehrAge" placeholder="e.g. 56">
+                </div>
+                <div class="form-group">
+                    <label>Biological Sex</label>
+                    <select id="ehrSex">
+                        <option value="">Select...</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Biomarker Assay Status</label>
+                    <input type="text" id="ehrBiomarkers" placeholder="e.g. HER2+, ER-, PR+">
+                </div>
+                <div class="form-group">
+                    <label>Upload Clinical Record Document File</label>
+                    <input type="file" id="ehrFileUploader" accept=".txt,.csv,.rtf,.json" onchange="parseEHRDocument(event)" style="display:none;">
+                    <button class="action-btn" style="background:#234e52; color:#e6fffa; border:1px solid #2d3748;" onclick="document.getElementById('ehrFileUploader').click()">📎 Attach Medical File</button>
+                    <button class="action-btn" style="background:#64748b; color:white; margin-top:6px;" onclick="clearEHRContext()">Clear EHR</button>
+                </div>
+                <div class="form-group full-width">
+                    <label>Active Clinical Background Record Context</label>
+                    <textarea id="ehrHistory" placeholder="Background annotations or raw parsed file information streams go here..."></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="rightPanel">
+        <div id="chatHistory">
+            <div class="message ai-msg"><strong>Interactive Workspace Active:</strong> Use the top-right toolbar buttons to switch modes. In <strong>Select Region</strong> mode, simply click and drag anywhere over the image to crop it directly into your chat workflow—just like Plotly!</div>
+        </div>
+        <div id="inputArea">
+            <input type="text" id="userInput" placeholder="Ask a diagnostic question about this area...">
+            <button id="sendBtn" onclick="sendMessage()">Send</button>
+            <button id="reportBtn" onclick="generateReport()">Generate Report</button>
+        </div>
+    </div>
+
+    <script>
+        let viewer = null;
+        let activeImageUrl = "";
+        let currentROI = null;
+        let uploadedDocContent = ""; 
+        
+        let currentMode = "pan"; // Modes: 'pan' or 'select'
+        let isDrawing = false;
+        let startX = 0, startY = 0;
+        let dragBox = null;
+
+        function initViewer(url) {
+            activeImageUrl = url;
+            currentROI = null;
+            if (viewer) { viewer.destroy(); }
+            viewer = OpenSeadragon({
+                id: "osdViewer",
+                prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/",
+                tileSources: { type: 'image', url: url },
+                showNavigationControl: false,
+                crossOriginPolicy: 'Anonymous'
+            });
+            
+            // Enforce current active tool interaction state on new image load
+            viewer.addHandler('open', () => {
+                setInteractionMode(currentMode);
+            });
+            
+            setupPlotlySelectionEngine();
+        }
+
+        // Handle Plotly Mode Toggling Options
+        function setInteractionMode(mode) {
+            currentMode = mode;
+            const overlay = document.getElementById('selectionOverlay');
+            const panBtn = document.getElementById('panModeBtn');
+            const selectBtn = document.getElementById('selectModeBtn');
+
+            if (!viewer) return;
+
+            if (mode === "select") {
+                panBtn.classList.remove('active');
+                selectBtn.classList.add('active');
+                overlay.style.display = 'block';
+                viewer.setMouseNavEnabled(false); // Disable core panning while drawing
+            } else {
+                selectBtn.classList.remove('active');
+                panBtn.classList.add('active');
+                overlay.style.display = 'none';
+                viewer.setMouseNavEnabled(true); // Re-enable standard pan/zoom interaction
+            }
+        }
+
+        function setupPlotlySelectionEngine() {
+            const container = document.getElementById('osdContainer');
+            const overlay = document.getElementById('selectionOverlay');
+
+            overlay.addEventListener('mousedown', (e) => {
+                if (currentMode !== 'select') return;
+                isDrawing = true;
+                
+                const rect = container.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+
+                dragBox = document.createElement('div');
+                dragBox.className = 'roi-drag-box';
+                dragBox.style.left = startX + 'px';
+                dragBox.style.top = startY + 'px';
+                container.appendChild(dragBox);
+            });
+
+            overlay.addEventListener('mousemove', (e) => {
+                if (!isDrawing || !dragBox) return;
+                const rect = container.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+
+                const width = currentX - startX;
+                const height = currentY - startY;
+
+                dragBox.style.width = Math.abs(width) + 'px';
+                dragBox.style.height = Math.abs(height) + 'px';
+                dragBox.style.left = (width > 0 ? startX : currentX) + 'px';
+                dragBox.style.top = (height > 0 ? startY : currentY) + 'px';
+            });
+
+            overlay.addEventListener('mouseup', (e) => {
+                if (!isDrawing) return;
+                isDrawing = false;
+
+                processCrop(dragBox.getBoundingClientRect(), container.getBoundingClientRect());
+
+                if (dragBox) {
+                    dragBox.remove();
+                    dragBox = null;
+                }
+                
+                // Automatically switch back to Pan & Zoom mode for standard navigation fluidly
+                setInteractionMode('pan');
+            });
+        }
+
+        function processCrop(boxRect, containerRect) {
+            if (!viewer || !viewer.drawer || !viewer.drawer.canvas) return;
+            const canvas = viewer.drawer.canvas;
+            
+            const scaleX = canvas.width / containerRect.width;
+            const scaleY = canvas.height / containerRect.height;
+
+            const cropX = (boxRect.left - containerRect.left) * scaleX;
+            const cropY = (boxRect.top - containerRect.top) * scaleY;
+            const cropW = boxRect.width * scaleX;
+            const cropH = boxRect.height * scaleY;
+
+            if (cropW < 10 || cropH < 10) return;
+
+            const outputCanvas = document.createElement('canvas');
+
+            // Higher-resolution ROI crop for pathology VLM.
+            // The previous 240x180 crop was too small for cellular detail.
+            const maxSide = 768;
+            const aspect = cropW / cropH;
+
+            if (aspect >= 1) {
+                outputCanvas.width = maxSide;
+                outputCanvas.height = Math.round(maxSide / aspect);
+            } else {
+                outputCanvas.height = maxSide;
+                outputCanvas.width = Math.round(maxSide * aspect);
+            }
+
+            const outputContext = outputCanvas.getContext('2d');
+            outputContext.drawImage(
+                canvas,
+                cropX,
+                cropY,
+                cropW,
+                cropH,
+                0,
+                0,
+                outputCanvas.width,
+                outputCanvas.height
+            );
+
+            currentROI = outputCanvas.toDataURL('image/jpeg', 0.95);
+
+            // Show selected ROI preview in chat, without the old cyan/blue box.
+            const history = document.getElementById('chatHistory');
+            history.innerHTML += `
+                <div class="message user-msg roi-selection-msg">
+                    <strong>Selected ROI</strong>
+                    <img class="roi-preview" src="${currentROI}" />
+                </div>`;
+            history.scrollTop = history.scrollHeight;
+
+            const inputField = document.getElementById('userInput');
+            inputField.placeholder = 'ROI selected. Ask a question about this selected region...';
+        }
+
+        function loadHESlide(url, caseId, age, sex) {
+            initViewer(url);
+            document.getElementById('ehrAge').value = age;
+            document.getElementById('ehrSex').value = sex;
+
+            if (caseId === 'TCGA-BRCA') {
+                document.getElementById('ehrBiomarkers').value = 'ER positive, PR positive, HER2 negative, Ki-67 approximately 18%';
+                document.getElementById('ehrHistory').value =
+                    'Synthetic demo EHR: 56-year-old female with a palpable upper outer quadrant breast mass. Core biopsy requested for suspected invasive breast carcinoma. Imaging shows an irregular spiculated lesion. No known distant metastasis in this demo scenario.';
+                document.getElementById('userInput').value =
+                    'Describe this selected breast ROI for a pathologist. What are the main histopathological features and likely interpretation?';
+            } else if (caseId === 'TCGA-LUAD') {
+                document.getElementById('ehrBiomarkers').value = 'EGFR mutation reported; ALK negative; PD-L1 pending';
+                document.getElementById('ehrHistory').value =
+                    'Synthetic demo EHR: 62-year-old female with a peripheral lung nodule found on CT. Biopsy performed to evaluate suspected lung adenocarcinoma. Mild smoking history. No confirmed nodal involvement in this demo scenario.';
+                document.getElementById('userInput').value =
+                    'Describe this selected lung ROI for a pathologist. What are the main histopathological features and likely interpretation?';
+            } else {
+                document.getElementById('ehrBiomarkers').value = '';
+                document.getElementById('ehrHistory').value = `Synthetic demo EHR for ${caseId}.`;
+                document.getElementById('userInput').value = 'Describe this selected ROI for a pathologist.';
+            }
+        }
+
+        function parseEHRDocument(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                uploadedDocContent = e.target.result;
+                document.getElementById('ehrHistory').value = `[PARSED ATTACHMENT: ${file.name}]\n` + uploadedDocContent.substring(0, 150) + "...";
+                document.getElementById('docStatusBadge').style.display = 'block';
+            };
+            reader.readAsText(file);
+        }
+
+
+        function clearEHRContext() {
+            uploadedDocContent = "";
+            document.getElementById('ehrAge').value = "";
+            document.getElementById('ehrSex').value = "";
+            document.getElementById('ehrBiomarkers').value = "";
+            document.getElementById('ehrHistory').value = "";
+            document.getElementById('docStatusBadge').style.display = 'none';
+            document.getElementById('ehrFileUploader').value = "";
+
+            const history = document.getElementById('chatHistory');
+            history.innerHTML += `<div class="message ai-msg"><strong>EHR context cleared.</strong> Future ROI questions will use image content only.</div>`;
+            history.scrollTop = history.scrollHeight;
+        }
+
+        function loadCustomUrl() {
+            const url = document.getElementById('customUrlInput').value.trim();
+            if (url) initViewer(url);
+        }
+
+        function loadLocalFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            initViewer(URL.createObjectURL(file));
+            activeImageUrl = "local-device-upload";
+        }
+
+        async function sendMessage() {
+            const inputField = document.getElementById('userInput');
+            const query = inputField.value.trim();
+            if (!query) return;
+
+            const history = document.getElementById('chatHistory');
+            history.innerHTML += `<div class="message user-msg">${query}</div>`;
+            inputField.value = '';
+            history.scrollTop = history.scrollHeight;
+
+            const ehrData = {
+                age: document.getElementById('ehrAge').value,
+                sex: document.getElementById('ehrSex').value,
+                biomarkers: document.getElementById('ehrBiomarkers').value,
+                summary_notes: document.getElementById('ehrHistory').value,
+                attached_document_raw: uploadedDocContent
+            };
+
+            try {
+                const response = await fetch('/api/v1/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        case_id: "CASE-" + Math.floor(Math.random() * 10000),
+                        clinical_history: JSON.stringify({ user_prompt: query, ehr_profile: ehrData }),
+                        image_metadata: { stain: "H&E", image_url: activeImageUrl, roi_snapshot: currentROI }
+                    })
+                });
+                
+                const data = await response.json();
+                let aiResponse = "";
+                
+                if (data.status === "success") {
+                    let rawText = data.model_output[0]?.generated_text || "";
+                    rawText = rawText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                    rawText = rawText.replace(/\n\n/g, '</p><p style="margin-top: 8px;">');
+                    rawText = rawText.replace(/\n/g, '<br>');
+                    aiResponse = `<p>${rawText}</p>`;
+                } else {
+                    aiResponse = `<strong>System Alert:</strong> ${data.detail || JSON.stringify(data)}`;
+                }
+
+                history.innerHTML += `<div class="message ai-msg">${aiResponse}</div>`;
+                // Keep currentROI active for follow-up questions.
+                // It will be replaced when the user selects a new ROI.
+
+            } catch (err) {
+                history.innerHTML += `<div class="message ai-msg"><strong>Error:</strong> Backend transmission drop.</div>`;
+            }
+            history.scrollTop = history.scrollHeight;
+        }
+
+
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function getEHRData() {
+            return {
+                age: document.getElementById('ehrAge').value,
+                sex: document.getElementById('ehrSex').value,
+                biomarkers: document.getElementById('ehrBiomarkers').value,
+                summary_notes: document.getElementById('ehrHistory').value,
+                attached_document_raw: uploadedDocContent
+            };
+        }
+
+        let lastGeneratedReportHtml = "";
+
+        function renderReportCard(reportText, ehrData, caseId) {
+            const history = document.getElementById('chatHistory');
+
+            const safeReport = escapeHtml(reportText)
+                .replace(/\n\n/g, "</p><p>")
+                .replace(/\n/g, "<br>");
+
+            const ehrSummary = `
+                <div class="report-meta">
+                    <p><strong>Case ID:</strong> ${escapeHtml(caseId)}</p>
+                    <p><strong>Age:</strong> ${escapeHtml(ehrData.age || "Not provided")}</p>
+                    <p><strong>Sex:</strong> ${escapeHtml(ehrData.sex || "Not provided")}</p>
+                    <p><strong>Biomarkers:</strong> ${escapeHtml(ehrData.biomarkers || "Not provided")}</p>
+                    <p><strong>Clinical notes:</strong> ${escapeHtml(ehrData.summary_notes || "Not provided")}</p>
+                </div>
+            `;
+
+            const reportHtml = `
+                <div class="report-card">
+                    <h2>Draft Pathology Report</h2>
+                    ${ehrSummary}
+
+                    <h3>ROI-based morphologic interpretation</h3>
+                    <p>${safeReport}</p>
+
+                    <h3>Limitations</h3>
+                    <p>This report is generated from the selected ROI only, not the full whole-slide image. EHR fields are shown as contextual metadata. This is a research prototype and is not for clinical diagnosis.</p>
+
+                    <button class="download-report-btn" onclick="downloadReportHtml()">Download HTML Report</button>
+                </div>
+            `;
+
+            lastGeneratedReportHtml = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Draft Pathology Report - ${escapeHtml(caseId)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; color: #1f2937; line-height: 1.5; }
+    h1 { color: #14532d; }
+    h2 { color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+    .meta { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; }
+    .note { color: #64748b; font-size: 0.9rem; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Draft Pathology Report</h1>
+  <div class="meta">
+    <p><strong>Case ID:</strong> ${escapeHtml(caseId)}</p>
+    <p><strong>Age:</strong> ${escapeHtml(ehrData.age || "Not provided")}</p>
+    <p><strong>Sex:</strong> ${escapeHtml(ehrData.sex || "Not provided")}</p>
+    <p><strong>Biomarkers:</strong> ${escapeHtml(ehrData.biomarkers || "Not provided")}</p>
+    <p><strong>Clinical notes:</strong> ${escapeHtml(ehrData.summary_notes || "Not provided")}</p>
+  </div>
+  <h2>ROI-based morphologic interpretation</h2>
+  <p>${safeReport}</p>
+  <h2>Limitations</h2>
+  <p class="note">Generated from the selected ROI only, not the full whole-slide image. EHR fields are shown as contextual metadata. Research prototype only; not for clinical diagnosis.</p>
+</body>
+</html>`;
+
+            history.innerHTML += reportHtml;
+            history.scrollTop = history.scrollHeight;
+        }
+
+        function downloadReportHtml() {
+            if (!lastGeneratedReportHtml) {
+                alert("No report has been generated yet.");
+                return;
+            }
+
+            const blob = new Blob([lastGeneratedReportHtml], { type: "text/html" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "draft_pathology_report.html";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            URL.revokeObjectURL(url);
+        }
+
+        async function generateReport() {
+            if (!currentROI) {
+                const history = document.getElementById('chatHistory');
+                history.innerHTML += `<div class="message ai-msg"><strong>No ROI selected.</strong> Please select a region first, then generate a report.</div>`;
+                history.scrollTop = history.scrollHeight;
+                return;
+            }
+
+            const history = document.getElementById('chatHistory');
+            const caseId = "REPORT-" + Math.floor(Math.random() * 10000);
+            const ehrData = getEHRData();
+
+            history.innerHTML += `<div class="message user-msg">Generate draft pathology report from selected ROI</div>`;
+            history.innerHTML += `<div class="message ai-msg"><strong>Generating report...</strong> This may take around 45–60 seconds on Mac.</div>`;
+            history.scrollTop = history.scrollHeight;
+
+            const reportPrompt = `
+Generate a concise draft pathology report for this selected ROI.
+
+Focus primarily on the image. Include:
+- ROI-based morphologic findings
+- Likely histopathological interpretation
+- Differential diagnosis or uncertainty if relevant
+- Suggested ancillary studies or regions to review further
+- Limitations
+
+Do not let clinical metadata override what is visible in the image.
+Do not write this as a final clinical diagnosis.
+            `.trim();
+
+            try {
+                const response = await fetch('/api/v1/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        case_id: caseId,
+                        clinical_history: JSON.stringify({
+                            user_prompt: reportPrompt,
+                            ehr_profile: ehrData
+                        }),
+                        image_metadata: {
+                            stain: "H&E",
+                            image_url: activeImageUrl,
+                            roi_snapshot: currentROI
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                const pendingMessages = history.querySelectorAll('.ai-msg');
+                const lastPending = pendingMessages[pendingMessages.length - 1];
+                if (lastPending && lastPending.innerHTML.includes("Generating report")) {
+                    lastPending.remove();
+                }
+
+                if (data.status === "success") {
+                    let rawText = data.model_output[0]?.generated_text || "";
+                    rawText = rawText.replace(/\*\*(.*?)\*\*/g, '$1');
+                    renderReportCard(rawText, ehrData, caseId);
+                } else {
+                    history.innerHTML += `<div class="message ai-msg"><strong>Report generation failed:</strong> ${escapeHtml(data.detail || JSON.stringify(data))}</div>`;
+                }
+
+            } catch (err) {
+                history.innerHTML += `<div class="message ai-msg"><strong>Error:</strong> Report generation request failed.</div>`;
+            }
+
+            history.scrollTop = history.scrollHeight;
+        }
+
+
+        // Send message when pressing Enter in the chat input.
+        document.getElementById('userInput').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+    </script>
+</body>
+</html>
