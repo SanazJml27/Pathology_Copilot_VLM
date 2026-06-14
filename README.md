@@ -270,7 +270,7 @@ Create a local `.env` file if desired:
 Example `.env.example`:
 
     USE_PATHOLOGY_VLM=true
-    PATHOLOGY_VLM_URL=http://127.0.0.1:9000/predict
+    PATHOLOGY_VLM_URL=http://127.0.0.1:9001/predict
     PATHOLOGY_VLM_TIMEOUT=1200
 
     PALAVA_ROOT=/Users/YOUR_USERNAME/Documents/pathology-copilot-vlm-mvp/external/PA-LLaVA-clean
@@ -297,11 +297,11 @@ You need two terminals.
     export PALAVA_ROOT="/Users/YOUR_USERNAME/Documents/pathology-copilot-vlm-mvp/external/PA-LLaVA-clean"
     export PALAVA_LLAVA_PATH="weights/domain_alignment_weight_ft"
 
-    uvicorn services.palava_service.server:app --host 127.0.0.1 --port 9000
+    uvicorn services.palava_service.server:app --host 127.0.0.1 --port 9001
 
 Check that the service is alive:
 
-    curl http://127.0.0.1:9000/health
+    curl http://127.0.0.1:9001/health
 
 Expected response includes:
 
@@ -443,7 +443,7 @@ It is a draft report based on:
 
 Check that the PA-LLaVA service is running:
 
-    curl http://127.0.0.1:9000/health
+    curl http://127.0.0.1:9001/health
 
 Check that the main app points to the PA-LLaVA service:
 
@@ -451,7 +451,7 @@ Check that the main app points to the PA-LLaVA service:
 
 Expected:
 
-    http://127.0.0.1:9000/predict
+    http://127.0.0.1:9001/predict
 
 ### Hugging Face 401 Unauthorized
 
