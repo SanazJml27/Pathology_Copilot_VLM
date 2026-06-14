@@ -318,21 +318,21 @@ Expected response includes:
     source .venv/bin/activate
 
     export USE_PATHOLOGY_VLM=true
-    export PATHOLOGY_VLM_URL=http://127.0.0.1:9000/predict
+    export PATHOLOGY_VLM_URL=http://127.0.0.1:9001/predict
     export PATHOLOGY_VLM_TIMEOUT=1200
 
-    uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
+    uvicorn src.main:app --host 127.0.0.1 --port 8003 --reload
 
 Open in browser:
 
-    http://127.0.0.1:8000
+    http://127.0.0.1:8003
 
 ---
 
 ## Basic Reproduction Workflow
 
-1. Start the PA-LLaVA service on port `9000`.
-2. Start the main UI on port `8000`.
+1. Start the PA-LLaVA service on port `9001`.
+2. Start the main UI on port `8003`.
 3. Open the browser UI.
 4. Upload an H&E pathology image.
 5. Click **Select Region**.
